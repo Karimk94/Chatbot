@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local AI Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- ADDED: The marked.js library to parse Markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        #chat-container::-webkit-scrollbar { width: 8px; }
+        #chat-container::-webkit-scrollbar-track { background: #f1f5f9; }
+        #chat-container::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+        
+        /* ADDED: Basic styling for tables generated from Markdown */
+        .prose table { width: 100%; border-collapse: collapse; margin-top: 1em; margin-bottom: 1em; }
+        .prose th, .prose td { border: 1px solid #e2e8f0; padding: 0.5rem 0.75rem; }
+        .prose th { background-color: #f8fafc; font-weight: 600; }
+        .prose tr:nth-child(even) { background-color: #f1f5f9; }
+    </style>
+</head>
+<body class="bg-slate-100 flex items-center justify-center h-screen">
+
+    <div class="w-full max-w-2xl h-full md:h-[90vh] bg-white rounded-lg shadow-lg flex flex-col p-4">
+        <h1 class="text-2xl font-bold text-slate-800 border-b pb-4">Local AI Chat (Gemma)</h1>
+        
+        <div id="chat-container" class="flex-1 overflow-y-auto my-4 p-4 bg-slate-50 rounded-lg">
+            <div class="p-3 rounded-lg bg-slate-200 text-slate-800 self-start max-w-lg shadow mb-4">
+                <div class="prose prose-sm text-slate-800">Hello! Ask me anything.</div>
+            </div>
+        </div>
+
+        <div class="border-t pt-4">
+            <form id="chat-form" class="flex items-center space-x-4">
+                <input type="text" id="message-input" placeholder="Type your message..." autocomplete="off"
+                       class="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition" required>
+                <button type="submit" id="send-button"
+                        class="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition disabled:bg-slate-400">
+                    Send
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const chatForm = document.getElementById('chat-form');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const chatContainer = document.getElementById('chat-container');
+
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userMessage = messageInput.value.trim();
+            if (!userMessage) return;
+
+            setFormDisabled(true);
+            appendMessage(userMessage, 'user');
+            messageInput.value = '';
+
+            const aiMessageContainer = createAiMessageContainer();
+            const aiContentDiv = aiMessageContainer.querySelector('.prose');
+
+            try {
+                const apiUrl = 'https://localhost:7108/chat/stream'; // Adjust port if necessary
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ textToAnalyze: userMessage })
+                });
+
+                if (!response.ok) throw new Error(`API Error: ${response.status}`);
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    
+                    // CORRECTED: This block now cleans the JSON array format on the fly.
+                    // It removes the brackets and quotes to create a clean string.
+                    let cleanedText = buffer;
+                    if (cleanedText.startsWith('["')) {
+                        cleanedText = cleanedText.substring(2);
+                    }
+                    if (cleanedText.endsWith('"]')) {
+                        cleanedText = cleanedText.substring(0, cleanedText.length - 2);
+                    }
+                    cleanedText = cleanedText.replace(/","/g, ''); // Join tokens
+                    cleanedText = cleanedText.replace(/\\n/g, '\n'); // Handle escaped newlines
+                    cleanedText = cleanedText.replace(/\\"/g, '"'); // Handle escaped quotes
+
+                    // Use innerHTML and marked.parse() to render the cleaned Markdown
+                    aiContentDiv.innerHTML = marked.parse(cleanedText);
+                    scrollToBottom();
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                aiContentDiv.innerHTML = 'Sorry, something went wrong. Please check the console.';
+                aiMessageContainer.classList.remove('bg-slate-200');
+                aiMessageContainer.classList.add('bg-red-200', 'text-red-800');
+            } finally {
+                setFormDisabled(false);
+            }
+        });
+
+        function setFormDisabled(isDisabled) {
+            messageInput.disabled = isDisabled;
+            sendButton.disabled = isDisabled;
+        }
+
+        function appendMessage(text, sender) {
+            const messageWrapper = document.createElement('div');
+            messageWrapper.classList.add('mb-4', 'flex', 'flex-col');
+
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('p-3', 'rounded-lg', 'shadow', 'max-w-lg');
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.classList.add('prose', 'prose-sm');
+
+            if (sender === 'user') {
+                messageDiv.classList.add('bg-blue-600', 'text-white', 'self-end');
+                contentDiv.classList.add('text-white');
+                contentDiv.textContent = text;
+            } else {
+                messageDiv.classList.add('bg-slate-200', 'text-slate-800', 'self-start');
+                contentDiv.innerHTML = text;
+            }
+            
+            messageDiv.appendChild(contentDiv);
+            messageWrapper.appendChild(messageDiv);
+            chatContainer.appendChild(messageWrapper);
+            scrollToBottom();
+            return messageWrapper;
+        }
+
+        function createAiMessageContainer() {
+            const messageWrapper = document.createElement('div');
+            messageWrapper.classList.add('mb-4', 'flex', 'flex-col');
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('p-3', 'rounded-lg', 'shadow', 'max-w-lg', 'bg-slate-200', 'text-slate-800', 'self-start');
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.classList.add('prose', 'prose-sm');
+            contentDiv.innerHTML = '...';
+
+            messageDiv.appendChild(contentDiv);
+            messageWrapper.appendChild(messageDiv);
+            chatContainer.appendChild(messageWrapper);
+            scrollToBottom();
+            return messageWrapper;
+        }
+
+        function scrollToBottom() {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+    </script>
+</body>
+</html>

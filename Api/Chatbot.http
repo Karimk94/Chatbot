@@ -1,0 +1,6 @@
+@Chatbot_HostAddress = http://localhost:5133
+
+POST {{Chatbot_HostAddress}}/stream/
+Accept: application/json
+
+###
