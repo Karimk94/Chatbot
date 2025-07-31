@@ -3,165 +3,311 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Local AI Chat</title>
+    <title>Local AI Studio</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- ADDED: The marked.js library to parse Markdown -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
-        #chat-container::-webkit-scrollbar { width: 8px; }
-        #chat-container::-webkit-scrollbar-track { background: #f1f5f9; }
-        #chat-container::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
-        
-        /* ADDED: Basic styling for tables generated from Markdown */
-        .prose table { width: 100%; border-collapse: collapse; margin-top: 1em; margin-bottom: 1em; }
-        .prose th, .prose td { border: 1px solid #e2e8f0; padding: 0.5rem 0.75rem; }
-        .prose th { background-color: #f8fafc; font-weight: 600; }
-        .prose tr:nth-child(even) { background-color: #f1f5f9; }
+        .chat-container::-webkit-scrollbar { width: 6px; }
+        .chat-container::-webkit-scrollbar-track { background: #f1f5f9; }
+        .chat-container::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }
+        .ai-message .prose { max-width: none; }
     </style>
 </head>
-<body class="bg-slate-100 flex items-center justify-center h-screen">
+<body class="bg-slate-100 text-slate-800">
 
-    <div class="w-full max-w-2xl h-full md:h-[90vh] bg-white rounded-lg shadow-lg flex flex-col p-4">
-        <h1 class="text-2xl font-bold text-slate-800 border-b pb-4">Local AI Chat (Gemma)</h1>
-        
-        <div id="chat-container" class="flex-1 overflow-y-auto my-4 p-4 bg-slate-50 rounded-lg">
-            <div class="p-3 rounded-lg bg-slate-200 text-slate-800 self-start max-w-lg shadow mb-4">
-                <div class="prose prose-sm text-slate-800">Hello! Ask me anything.</div>
+    <div class="flex h-screen">
+        <!-- Left Panel: Tools -->
+        <div class="w-1/3 bg-white border-r border-slate-200 p-6 flex flex-col space-y-8">
+            <h1 class="text-2xl font-bold text-slate-900">AI Studio</h1>
+            
+            <!-- Rephrase Tool -->
+            <div>
+                <h2 class="text-lg font-semibold mb-3">Rephrase Text</h2>
+                <form id="rephrase-form" class="space-y-3">
+                    <textarea id="rephrase-input" rows="4" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 transition" placeholder="Enter text to rephrase..."></textarea>
+                    <div class="flex items-center justify-between">
+                        <select id="rephrase-language" class="p-2 border rounded-lg bg-slate-50">
+                            <option value="english">English</option>
+                            <option value="arabic">Arabic</option>
+                        </select>
+                        <button type="submit" class="px-5 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition">Rephrase</button>
+                    </div>
+                </form>
+                <div id="rephrase-output" class="mt-4 p-4 bg-slate-50 rounded-lg hidden prose prose-sm"></div>
+            </div>
+
+            <!-- Translate Tool -->
+            <div>
+                <h2 class="text-lg font-semibold mb-3">Translate Text</h2>
+                <form id="translate-form" class="space-y-3">
+                    <textarea id="translate-input" rows="4" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-teal-500 transition" placeholder="Enter text to translate..."></textarea>
+                    <div class="flex items-center justify-between">
+                        <select id="translate-language" class="p-2 border rounded-lg bg-slate-50">
+                            <option value="english">English to Arabic</option>
+                            <option value="arabic">Arabic to English</option>
+                        </select>
+                        <button type="submit" class="px-5 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition">Translate</button>
+                    </div>
+                </form>
+                <div id="translate-output" class="mt-4 p-4 bg-slate-50 rounded-lg hidden prose prose-sm"></div>
             </div>
         </div>
 
-        <div class="border-t pt-4">
-            <form id="chat-form" class="flex items-center space-x-4">
-                <input type="text" id="message-input" placeholder="Type your message..." autocomplete="off"
-                       class="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition" required>
-                <button type="submit" id="send-button"
-                        class="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition disabled:bg-slate-400">
-                    Send
+        <!-- Right Panel: Chat -->
+        <div class="w-2/3 flex flex-col bg-slate-50">
+            <div id="chat-container" class="flex-1 overflow-y-auto p-6">
+                <!-- Initial Welcome Message -->
+                <div class="flex items-start gap-4 mb-6">
+                    <div class="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-white font-bold text-xl">A</div>
+                    <div class="bg-white p-4 rounded-lg shadow-sm max-w-xl">
+                        <p class="prose prose-sm">Hello! I'm your local AI assistant. How can I help you today?</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Stop Generating Button -->
+            <div id="stop-generating-container" class="px-6 pb-2 text-center" style="display: none;">
+                <button id="stop-generating-button" class="px-4 py-2 bg-red-500 text-white font-semibold rounded-lg hover:bg-red-600 transition">
+                    <i class="fas fa-stop mr-2"></i>Stop Generating
                 </button>
-            </form>
+            </div>
+
+            <!-- Chat Input Form -->
+            <div class="border-t border-slate-200 bg-white p-6">
+                <form id="chat-form" class="flex items-center space-x-4">
+                    <input type="text" id="message-input" placeholder="Ask me anything..." autocomplete="off"
+                           class="flex-1 p-4 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition" required>
+                    <button type="submit" id="send-button"
+                            class="px-6 py-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition disabled:bg-slate-400">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </form>
+            </div>
         </div>
     </div>
 
     <script>
+        const apiUrlBase = 'https://localhost:7108';
+        const FETCH_TIMEOUT = 30000; // 30 seconds
+        let abortController = new AbortController();
+
+        // --- DOM Elements ---
         const chatForm = document.getElementById('chat-form');
         const messageInput = document.getElementById('message-input');
         const sendButton = document.getElementById('send-button');
         const chatContainer = document.getElementById('chat-container');
+        
+        const rephraseForm = document.getElementById('rephrase-form');
+        const rephraseInput = document.getElementById('rephrase-input');
+        const rephraseOutput = document.getElementById('rephrase-output');
+        
+        const translateForm = document.getElementById('translate-form');
+        const translateInput = document.getElementById('translate-input');
+        const translateOutput = document.getElementById('translate-output');
 
-        chatForm.addEventListener('submit', async (e) => {
+        const stopGeneratingContainer = document.getElementById('stop-generating-container');
+        const stopGeneratingButton = document.getElementById('stop-generating-button');
+
+        // --- Event Listeners ---
+        chatForm.addEventListener('submit', handleChatSubmit);
+        rephraseForm.addEventListener('submit', handleRephraseSubmit);
+        translateForm.addEventListener('submit', handleTranslateSubmit);
+        stopGeneratingButton.addEventListener('click', () => {
+            abortController.abort();
+            console.log("Stream generation stopped by user.");
+        });
+
+        // --- Core Handlers ---
+        async function handleChatSubmit(e) {
             e.preventDefault();
             const userMessage = messageInput.value.trim();
             if (!userMessage) return;
 
-            setFormDisabled(true);
-            appendMessage(userMessage, 'user');
+            setChatUiState(true);
+            appendUserMessage(userMessage);
             messageInput.value = '';
 
-            const aiMessageContainer = createAiMessageContainer();
-            const aiContentDiv = aiMessageContainer.querySelector('.prose');
+            const aiMessageElement = appendAiMessageContainer();
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
 
             try {
-                const apiUrl = 'https://localhost:7108/chat/stream'; // Adjust port if necessary
-
-                const response = await fetch(apiUrl, {
+                const response = await fetch(`${apiUrlBase}/chat/stream`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ textToAnalyze: userMessage })
+                    body: JSON.stringify({ textToAnalyze: userMessage }),
+                    signal: controller.signal
                 });
+                clearTimeout(timeoutId);
 
                 if (!response.ok) throw new Error(`API Error: ${response.status}`);
-
+                
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
-                let buffer = '';
-
+                aiMessageElement.textContent = ''; // Clear the '...' placeholder
+                
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
                     
-                    buffer += decoder.decode(value, { stream: true });
+                    let token = decoder.decode(value, { stream: true });
                     
-                    // CORRECTED: This block now cleans the JSON array format on the fly.
-                    // It removes the brackets and quotes to create a clean string.
-                    let cleanedText = buffer;
-                    if (cleanedText.startsWith('["')) {
-                        cleanedText = cleanedText.substring(2);
+                    // **FIX:** Aggressive real-time cleaning of the stream.
+                    const cleanedToken = token.replace(/["\[\],]/g, '').replace(/\\n/g, '\n');
+                    
+                    if (cleanedToken.trim() || cleanedToken === '\n') {
+                       aiMessageElement.textContent += cleanedToken;
                     }
-                    if (cleanedText.endsWith('"]')) {
-                        cleanedText = cleanedText.substring(0, cleanedText.length - 2);
-                    }
-                    cleanedText = cleanedText.replace(/","/g, ''); // Join tokens
-                    cleanedText = cleanedText.replace(/\\n/g, '\n'); // Handle escaped newlines
-                    cleanedText = cleanedText.replace(/\\"/g, '"'); // Handle escaped quotes
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+                aiMessageElement.textContent = aiMessageElement.textContent.trim();
 
-                    // Use innerHTML and marked.parse() to render the cleaned Markdown
-                    aiContentDiv.innerHTML = marked.parse(cleanedText);
-                    scrollToBottom();
+            } catch (error) {
+                clearTimeout(timeoutId);
+                if (error.name === 'AbortError') {
+                    aiMessageElement.innerHTML = '<p class="text-red-500"><strong>Request Timed Out:</strong> The AI is taking too long to respond. This is common for local models. Please try again.</p>';
+                } else if (error.name === 'AbortError' && !isGenerating) {
+                    // This case handles user-cancelled generation
+                    aiMessageElement.innerHTML += '<p class="text-yellow-500 font-semibold mt-2">[Generation stopped]</p>';
+                }
+                else {
+                    console.error('Chat Error:', error);
+                    aiMessageElement.innerHTML = '<p class="text-red-500">Sorry, something went wrong. Please check the server connection.</p>';
+                }
+            } finally {
+                setChatUiState(false);
+            }
+        }
+
+        async function handleRephraseSubmit(e) {
+            e.preventDefault();
+            const text = rephraseInput.value.trim();
+            const lang = document.getElementById('rephrase-language').value;
+            if (!text) return;
+            
+            rephraseOutput.innerHTML = '<i>Rephrasing...</i>';
+            rephraseOutput.classList.remove('hidden');
+
+            const body = { text, language: lang };
+            await streamAndFormatJson(`${apiUrlBase}/chat/rephrase`, body, rephraseOutput, 'Rephrased Suggestions');
+        }
+
+        async function handleTranslateSubmit(e) {
+            e.preventDefault();
+            const text = translateInput.value.trim();
+            const lang = document.getElementById('translate-language').value;
+            if (!text) return;
+
+            translateOutput.innerHTML = '<i>Translating...</i>';
+            translateOutput.classList.remove('hidden');
+
+            const body = { text, sourceLanguage: lang };
+            await streamAndFormatJson(`${apiUrlBase}/chat/translate`, body, translateOutput, 'Translation Suggestions');
+        }
+
+        // --- Unified Streaming Logic for Tools ---
+        async function streamAndFormatJson(url, body, outputElement, title) {
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!response.ok) throw new Error(`API Error: ${response.status}`);
+
+                let rawBuffer = '';
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                outputElement.innerHTML = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value, { stream: true });
+                    rawBuffer += chunk;
+                    
+                    const cleanPreview = rawBuffer.replace(/[\[\]"]/g, '').replace(/,/g, '\n- ');
+                    outputElement.innerHTML = `<h3>${title}:</h3><ul class="list-disc list-inside space-y-1"><li>${cleanPreview}</li></ul>`;
+                }
+
+                const jsonMatch = rawBuffer.match(/\[.*\]/s);
+                if (jsonMatch) {
+                    try {
+                        const suggestions = JSON.parse(jsonMatch[0]);
+                        displayFormattedList(outputElement, suggestions, title);
+                    } catch (parseError) {
+                        console.error('JSON Parse Error:', parseError, 'Raw output:', rawBuffer);
+                        outputElement.innerHTML = `<p class="text-red-500"><strong>Error:</strong> Could not parse the final response.</p>`;
+                    }
+                } else {
+                     outputElement.innerHTML = `<p class="text-red-500"><strong>Error:</strong> No valid JSON array found in the response.</p>`;
                 }
 
             } catch (error) {
-                console.error('Error:', error);
-                aiContentDiv.innerHTML = 'Sorry, something went wrong. Please check the console.';
-                aiMessageContainer.classList.remove('bg-slate-200');
-                aiMessageContainer.classList.add('bg-red-200', 'text-red-800');
-            } finally {
-                setFormDisabled(false);
+                console.error('Streaming Error:', error);
+                outputElement.innerHTML = `<p class="text-red-500"><strong>Error:</strong> Failed to get a response from the server.</p>`;
             }
-        });
-
-        function setFormDisabled(isDisabled) {
-            messageInput.disabled = isDisabled;
-            sendButton.disabled = isDisabled;
         }
-
-        function appendMessage(text, sender) {
-            const messageWrapper = document.createElement('div');
-            messageWrapper.classList.add('mb-4', 'flex', 'flex-col');
-
-            const messageDiv = document.createElement('div');
-            messageDiv.classList.add('p-3', 'rounded-lg', 'shadow', 'max-w-lg');
-            
-            const contentDiv = document.createElement('div');
-            contentDiv.classList.add('prose', 'prose-sm');
-
-            if (sender === 'user') {
-                messageDiv.classList.add('bg-blue-600', 'text-white', 'self-end');
-                contentDiv.classList.add('text-white');
-                contentDiv.textContent = text;
+        
+        // --- UI Helper Functions ---
+        function setChatUiState(isGenerating) {
+            if (isGenerating) {
+                abortController = new AbortController();
+                messageInput.disabled = true;
+                sendButton.disabled = true;
+                stopGeneratingContainer.style.display = 'block';
             } else {
-                messageDiv.classList.add('bg-slate-200', 'text-slate-800', 'self-start');
-                contentDiv.innerHTML = text;
+                messageInput.disabled = false;
+                sendButton.disabled = false;
+                messageInput.focus();
+                stopGeneratingContainer.style.display = 'none';
             }
-            
-            messageDiv.appendChild(contentDiv);
-            messageWrapper.appendChild(messageDiv);
-            chatContainer.appendChild(messageWrapper);
-            scrollToBottom();
-            return messageWrapper;
         }
 
-        function createAiMessageContainer() {
-            const messageWrapper = document.createElement('div');
-            messageWrapper.classList.add('mb-4', 'flex', 'flex-col');
-            
-            const messageDiv = document.createElement('div');
-            messageDiv.classList.add('p-3', 'rounded-lg', 'shadow', 'max-w-lg', 'bg-slate-200', 'text-slate-800', 'self-start');
-            
-            const contentDiv = document.createElement('div');
-            contentDiv.classList.add('prose', 'prose-sm');
-            contentDiv.innerHTML = '...';
-
-            messageDiv.appendChild(contentDiv);
-            messageWrapper.appendChild(messageDiv);
-            chatContainer.appendChild(messageWrapper);
-            scrollToBottom();
-            return messageWrapper;
-        }
-
-        function scrollToBottom() {
+        function appendUserMessage(message) {
+            const messageHtml = `
+                <div class="flex items-start gap-4 mb-6 justify-end">
+                    <div class="bg-blue-500 text-white p-4 rounded-lg shadow-sm max-w-xl">
+                        <p class="prose prose-sm text-white">${message}</p>
+                    </div>
+                    <div class="w-10 h-10 rounded-full bg-slate-300 flex items-center justify-center text-slate-600 font-bold text-xl">U</div>
+                </div>
+            `;
+            chatContainer.insertAdjacentHTML('beforeend', messageHtml);
             chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function appendAiMessageContainer() {
+            const uniqueId = `ai-message-${Date.now()}`;
+            const messageHtml = `
+                <div class="flex items-start gap-4 mb-6">
+                    <div class="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-white font-bold text-xl">A</div>
+                    <div class="bg-white p-4 rounded-lg shadow-sm max-w-xl">
+                        <div id="${uniqueId}" class="prose prose-sm">...</div>
+                    </div>
+                </div>
+            `;
+            chatContainer.insertAdjacentHTML('beforeend', messageHtml);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            return document.getElementById(uniqueId);
+        }
+
+        function displayFormattedList(outputElement, items, title) {
+            if (!items || !Array.isArray(items) || items.length === 0) {
+                outputElement.innerHTML = `<p>No suggestions found.</p>`;
+                return;
+            }
+            let html = `<h3>${title}:</h3><ul class="list-disc list-inside space-y-2 mt-2">`;
+            items.forEach(item => {
+                const sanitizedItem = document.createElement('div');
+                sanitizedItem.textContent = item;
+                html += `<li class="p-2 bg-white rounded shadow-sm">${sanitizedItem.innerHTML}</li>`;
+            });
+            html += '</ul>';
+            outputElement.innerHTML = html;
         }
     </script>
 </body>
